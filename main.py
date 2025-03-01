@@ -177,14 +177,14 @@ def get_correlation_heatmap(
         sns.heatmap(
             corr_matrix,
             mask=np.triu(np.ones_like(corr_matrix)),
-            annot=True,
+            annot=False,
             cmap="RdBu",
             vmin=-1,  # Minimum value for color mapping
             vmax=1,  # Maximum value for color mapping
             square=True,  # Make cells square
-            fmt=".2f",  # Format for annotations (2 decimal places)
             linewidths=0.5,  # Width of lines between cells
-            cbar=False,
+            cbar=True,
+            cbar_kws={"shrink": 0.5},
         )
 
         # Set title and labels
