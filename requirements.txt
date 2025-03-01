@@ -1,1 +1,8 @@
 fastapi[all]
+sqlalchemy
+python-dotenv
+pandas
+numpy
+matplotlib
+seaborn
+uvicorn

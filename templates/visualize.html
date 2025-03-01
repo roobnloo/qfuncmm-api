@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Correlation Matrix Visualization</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #333;
+            margin-top: 0;
+        }
+
+        .results {
+            margin-top: 20px;
+        }
+
+        .results img {
+            max-width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .error {
+            color: #d32f2f;
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #ffebee;
+            border-radius: 4px;
+        }
+
+        .subject-ids {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+        }
+
+        .subject-ids h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+
+        .subject-ids .id-list {
+            max-height: 150px;
+            overflow-y: auto;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .subject-ids .id-badge {
+            display: inline-block;
+            background-color: #e3f2fd;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            border: 1px solid #bbdefb;
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+
+        .subject-ids .id-badge:hover {
+            background-color: #bbdefb;
+            transform: translateY(-2px);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .subject-ids .id-badge.active {
+            background-color: #2196f3;
+            color: white;
+        }
+
+        .loading {
+            display: inline-block;
+            margin-left: 10px;
+        }
+
+        .current-subject {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Correlation Matrix Visualization</h1>
+
+        <div class="subject-ids">
+            <h3>Select a Subject ID:</h3>
+            <div id="idList" class="id-list">
+                <span class="loading">Loading subject IDs...</span>
+            </div>
+        </div>
+
+        <div id="error" class="error" style="display: none;"></div>
+
+        <div id="results" class="results" style="display: none;">
+            <div id="currentSubject" class="current-subject"></div>
+            <img id="heatmapImage" src="" alt="Correlation Matrix Heatmap">
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const resultsDiv = document.getElementById('results');
+            const errorDiv = document.getElementById('error');
+            const heatmapImage = document.getElementById('heatmapImage');
+            const idListDiv = document.getElementById('idList');
+            const currentSubjectDiv = document.getElementById('currentSubject');
+
+            let activeBadge = null;
+
+            // Fetch available subject IDs
+            fetchSubjectIds();
+
+            function fetchSubjectIds() {
+                fetch('/subjects/')
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Failed to fetch subject IDs');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        idListDiv.innerHTML = '';
+                        if (data.subjectids && data.subjectids.length > 0) {
+                            data.subjectids.forEach(id => {
+                                const badge = document.createElement('span');
+                                badge.className = 'id-badge';
+                                badge.textContent = id;
+                                badge.addEventListener('click', () => {
+                                    // Remove active class from previous badge
+                                    if (activeBadge) {
+                                        activeBadge.classList.remove('active');
+                                    }
+                                    // Add active class to clicked badge
+                                    badge.classList.add('active');
+                                    activeBadge = badge;
+
+                                    // Fetch matrix for selected subject ID
+                                    fetchMatrix(id);
+                                });
+                                idListDiv.appendChild(badge);
+                            });
+                        } else {
+                            idListDiv.textContent = 'No subject IDs available';
+                        }
+                    })
+                    .catch(error => {
+                        idListDiv.textContent = 'Error loading subject IDs';
+                        console.error('Error fetching subject IDs:', error);
+                    });
+            }
+
+            function fetchMatrix(subjectId) {
+                // Clear previous results and errors
+                resultsDiv.style.display = 'none';
+                errorDiv.style.display = 'none';
+
+                // Show which subject is currently displayed
+                currentSubjectDiv.textContent = `Subject ID: ${subjectId}`;
+
+                // Set heatmap image source with cache-busting parameter
+                const timestamp = new Date().getTime();
+                heatmapImage.src = `/correlation-heatmap/?subjectid=${subjectId}&_=${timestamp}`;
+
+                // Show loading message
+                showError('Loading correlation matrix...');
+
+                // When image loads successfully
+                heatmapImage.onload = function () {
+                    errorDiv.style.display = 'none';
+                    resultsDiv.style.display = 'block';
+                };
+
+                // When image fails to load
+                heatmapImage.onerror = function () {
+                    showError(`Error loading matrix for Subject ${subjectId}`);
+                    resultsDiv.style.display = 'none';
+                };
+            }
+
+            function showError(message) {
+                errorDiv.textContent = message;
+                errorDiv.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+
+</html>

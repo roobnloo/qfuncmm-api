@@ -1,0 +1,14 @@
+[project]
+name = "qfuncmm-api"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]>=0.115.10",
+    "matplotlib>=3.10.1",
+    "pandas>=2.2.3",
+    "psycopg2>=2.9.10",
+    "seaborn>=0.13.2",
+    "sqlalchemy>=2.0.38",
+]
