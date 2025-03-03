@@ -210,7 +210,7 @@ def get_completion_status(
     db: Session = Depends(get_db),
 ):
     try:
-        # Query to count the number of unique region pairs that have correlations for this subject
+        # Query to count unique region pairs and get the latest timestamp
         query = text(
             """
             WITH latest_records AS (
@@ -226,19 +226,41 @@ def get_completion_status(
             WHERE rn = 1
             """
         )
-        result = db.execute(query, {"subjectid": subjectid}).fetchone()
 
-        if not result:
-            return {"pair_count": 0, "total_pairs": 4186, "completion_percentage": 0}
+        # Query to get the most recent timestamp for this subject
+        timestamp_query = text(
+            """
+            SELECT "end"
+            FROM stage2_run
+            WHERE subjectid = :subjectid
+            ORDER BY "end" DESC
+            LIMIT 1
+            """
+        )
 
-        pair_count = result[0]
+        pair_count_result = db.execute(query, {"subjectid": subjectid}).fetchone()
+        timestamp_result = db.execute(
+            timestamp_query, {"subjectid": subjectid}
+        ).fetchone()
+
+        if not pair_count_result:
+            return {
+                "pair_count": 0,
+                "total_pairs": 4186,
+                "completion_percentage": 0,
+                "last_updated": None,
+            }
+
+        pair_count = pair_count_result[0]
         total_pairs = 4186  # 92 choose 2
         completion_percentage = (pair_count / total_pairs) * 100
+        last_updated = timestamp_result[0] if timestamp_result else None
 
         return {
             "pair_count": pair_count,
             "total_pairs": total_pairs,
             "completion_percentage": round(completion_percentage, 2),
+            "last_updated": last_updated,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -228,7 +228,26 @@
                         const statusText = document.getElementById('statusText');
 
                         statusBar.style.width = `${data.completion_percentage}%`;
-                        statusText.textContent = `Completion: ${data.completion_percentage}% (${data.pair_count} of ${data.total_pairs} region pairs)`;
+
+                        // Format and display timestamp along with completion status
+                        let statusMessage = `Completion: ${data.completion_percentage}% (${data.pair_count} of ${data.total_pairs} region pairs)`;
+
+                        if (data.last_updated) {
+                            // Format the timestamp
+                            const lastUpdated = new Date(data.last_updated);
+                            const formattedDate = lastUpdated.toLocaleString(undefined, {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit'
+                            });
+
+                            statusMessage += ` • Last updated: ${formattedDate}`;
+                        }
+
+                        statusText.textContent = statusMessage;
                     })
                     .catch(error => {
                         console.error('Error fetching completion status:', error);
