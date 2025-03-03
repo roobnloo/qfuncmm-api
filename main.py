@@ -204,6 +204,46 @@ def get_correlation_heatmap(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/completion-status/")
+def get_completion_status(
+    subjectid: int = Query(..., description="Subject ID"),
+    db: Session = Depends(get_db),
+):
+    try:
+        # Query to count the number of unique region pairs that have correlations for this subject
+        query = text(
+            """
+            WITH latest_records AS (
+                SELECT 
+                    reg1id, 
+                    reg2id,
+                    ROW_NUMBER() OVER (PARTITION BY reg1id, reg2id ORDER BY "end" DESC) as rn
+                FROM stage2_run
+                WHERE subjectid = :subjectid
+            )
+            SELECT COUNT(*) as pair_count
+            FROM latest_records
+            WHERE rn = 1
+            """
+        )
+        result = db.execute(query, {"subjectid": subjectid}).fetchone()
+
+        if not result:
+            return {"pair_count": 0, "total_pairs": 4186, "completion_percentage": 0}
+
+        pair_count = result[0]
+        total_pairs = 4186  # 92 choose 2
+        completion_percentage = (pair_count / total_pairs) * 100
+
+        return {
+            "pair_count": pair_count,
+            "total_pairs": total_pairs,
+            "completion_percentage": round(completion_percentage, 2),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
 
