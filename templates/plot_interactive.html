@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Correlation Matrix Visualization</title>
+    <title>Interactive Correlation Matrix Visualization</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -18,7 +18,7 @@
         }
 
         .status-bar-container {
-            width: 100%;
+            width: 700px;
             background-color: #e0e0e0;
             border-radius: 4px;
             height: 20px;
@@ -40,7 +40,7 @@
         }
 
         .container {
-            max-width: 1000px;
+            max-width: 1200px;
             margin: 0 auto;
             background-color: white;
             padding: 20px;
@@ -51,24 +51,6 @@
         h1 {
             color: #333;
             margin-top: 0;
-        }
-
-        .results {
-            margin-top: 20px;
-        }
-
-        .results img {
-            max-width: 100%;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-
-        .error {
-            color: #d32f2f;
-            margin-top: 10px;
-            padding: 10px;
-            background-color: #ffebee;
-            border-radius: 4px;
         }
 
         .subject-ids {
@@ -114,22 +96,31 @@
             color: white;
         }
 
+        .error {
+            color: #d32f2f;
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #ffebee;
+            border-radius: 4px;
+        }
+
         .loading {
             display: inline-block;
             margin-left: 10px;
+            color: #666;
         }
 
-        .current-subject {
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 15px;
+        #heatmap-container {
+            width: 700px;
+            height: 700px;
         }
     </style>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 </head>
 
 <body>
     <div class="container">
-        <h1>Correlation Matrix Visualization</h1>
+        <h1>Interactive Correlation Matrix Visualization</h1>
 
         <div class="subject-ids">
             <h3>Select a Subject ID:</h3>
@@ -140,9 +131,7 @@
 
         <div id="error" class="error" style="display: none;"></div>
 
-        <div id="results" class="results" style="display: none;">
-            <div id="currentSubject" class="current-subject"></div>
-
+        <div id="results" style="display: none;">
             <div class="status-container">
                 <div class="status-bar-container">
                     <div id="statusBar" class="status-bar"></div>
@@ -150,7 +139,7 @@
                 <div id="statusText" class="status-text"></div>
             </div>
 
-            <img id="heatmapImage" src="" alt="Correlation Matrix Heatmap">
+            <div id="heatmap-container"></div>
         </div>
     </div>
 
@@ -158,17 +147,16 @@
         document.addEventListener('DOMContentLoaded', function () {
             const resultsDiv = document.getElementById('results');
             const errorDiv = document.getElementById('error');
-            const heatmapImage = document.getElementById('heatmapImage');
             const idListDiv = document.getElementById('idList');
-            const currentSubjectDiv = document.getElementById('currentSubject');
+            const heatmapContainer = document.getElementById('heatmap-container');
 
             let activeBadge = null;
 
-            // Create a cache object to store data for each subject
+            // Create cache objects
             const dataCache = {};
-            const imageCache = {};
+            const plotDataCache = {};
 
-            // Cache expiration time in milliseconds (e.g., 5 minutes)
+            // Cache expiration time in milliseconds (5 minutes)
             const CACHE_EXPIRATION = 5 * 60 * 1000;
 
             // Fetch available subject IDs
@@ -217,18 +205,22 @@
                 // Clear previous results and errors
                 resultsDiv.style.display = 'none';
                 errorDiv.style.display = 'none';
+                showError('Loading correlation matrix...');
 
-                // Show which subject is currently displayed
-                currentSubjectDiv.textContent = `Subject ID: ${subjectId}`;
-
-                // Check if we have cached data for this subject and if it's still valid
+                // Check if we have cached status data
                 const now = new Date().getTime();
                 if (dataCache[subjectId] && (now - dataCache[subjectId].timestamp) < CACHE_EXPIRATION) {
-                    // Use cached data
+                    // Use cached status data
                     updateStatusBar(dataCache[subjectId].data);
-                    loadHeatmapImage(subjectId);
+
+                    // Check if we have cached plot data
+                    if (plotDataCache[subjectId] && (now - plotDataCache[subjectId].timestamp) < CACHE_EXPIRATION) {
+                        // Use cached plot data
+                        createPlot(plotDataCache[subjectId].data);
+                        return;
+                    }
                 } else {
-                    // Fetch from server
+                    // Fetch status data from server
                     fetch(`/completion-status/?subjectid=${subjectId}`)
                         .then(response => {
                             if (!response.ok) {
@@ -237,21 +229,41 @@
                             return response.json();
                         })
                         .then(data => {
-                            // Cache the data with timestamp
+                            // Cache the status data with timestamp
                             dataCache[subjectId] = {
                                 data: data,
                                 timestamp: now
                             };
-
                             updateStatusBar(data);
-                            loadHeatmapImage(subjectId);
                         })
                         .catch(error => {
                             console.error('Error fetching completion status:', error);
                             document.getElementById('statusText').textContent = 'Could not load completion status';
-                            loadHeatmapImage(subjectId);
                         });
                 }
+
+                // Fetch the correlation data
+                fetch(`/correlation-heatmap-data/?subjectid=${subjectId}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! Status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        // Cache the plot data with timestamp
+                        plotDataCache[subjectId] = {
+                            data: data,
+                            timestamp: now
+                        };
+
+                        // Create the plot
+                        createPlot(data);
+                    })
+                    .catch(error => {
+                        showError(`Error loading matrix for Subject ${subjectId}: ${error.message}`);
+                        console.error('Error loading matrix:', error);
+                    });
             }
 
             function updateStatusBar(data) {
@@ -282,44 +294,105 @@
                 statusText.textContent = statusMessage;
             }
 
-            function loadHeatmapImage(subjectId) {
-                // Set heatmap image source with cache-busting parameter (only if not cached)
-                const timestamp = new Date().getTime();
-                let imageUrl;
+            function createPlot(data) {
+                errorDiv.style.display = 'none';
 
-                // Check if we have the image URL cached and if it's still valid
-                if (imageCache[subjectId] && (timestamp - imageCache[subjectId].timestamp) < CACHE_EXPIRATION) {
-                    imageUrl = imageCache[subjectId].url;
-                } else {
-                    imageUrl = `/correlation-heatmap/?subjectid=${subjectId}&_=${timestamp}`;
-                    imageCache[subjectId] = {
-                        url: imageUrl,
-                        timestamp: timestamp
-                    };
-                }
-
-                heatmapImage.src = imageUrl;
-
-                // Show loading message
-                showError('Loading correlation matrix...');
-
-                // When image loads successfully
-                heatmapImage.onload = function () {
-                    errorDiv.style.display = 'none';
-                    resultsDiv.style.display = 'block';
+                const trace = {
+                    z: data.z,
+                    x: data.x,
+                    y: data.y,
+                    type: 'heatmap',
+                    colorscale: [
+                        [0, 'rgb(178,24,43)'],      // Dark red for -1
+                        [0.25, 'rgb(239,138,98)'],  // Light red for -0.5
+                        [0.5, 'rgb(247,247,247)'],  // White for 0
+                        [0.65, 'rgb(171,217,233)'], // Very light blue for 0.3
+                        [0.8, 'rgb(116,173,209)'],  // Medium blue for 0.6
+                        [0.9, 'rgb(69,117,180)'],   // Deeper blue for 0.8
+                        [1, 'rgb(33,63,151)']       // Dark blue for 1
+                    ],
+                    zmin: -1,
+                    zmax: 1,
+                    showscale: true,
+                    colorbar: {
+                        title: 'Correlation',
+                        thickness: 15,
+                        thicknessmode: 'pixels',
+                        len: 0.5,
+                        lenmode: 'fraction',
+                        outlinewidth: 0
+                    },
+                    hovertemplate: 'Region %{x} & Region %{y}<br>Correlation: %{z:.3f}<extra></extra>'
                 };
 
-                // When image fails to load
-                heatmapImage.onerror = function () {
-                    showError(`Error loading matrix for Subject ${subjectId}`);
-                    resultsDiv.style.display = 'none';
+                const layout = {
+                    title: `Region Correlation Matrix - Subject ${data.subjectid}`,
+                    xaxis: {
+                        title: 'Region ID',
+                        side: 'bottom',
+                        tickmode: 'array',
+                        tickvals: data.x.filter((_, i) => i % 3 === 0),  // Show every 5th tick
+                        ticktext: data.x.filter((_, i) => i % 3 === 0),  // Show every 5th label
+                        showgrid: false,  // Remove x-axis gridlines
+                        zeroline: false,   // Remove zero line
+                        automargin: true,
+                        fixedrange: true,
+                        showspikes: true,
+                        spikemode: 'toaxis'
+                    },
+                    yaxis: {
+                        title: 'Region ID',
+                        tickmode: 'array',
+                        tickvals: data.x.filter((_, i) => i % 3 === 0),  // Show every 5th tick
+                        ticktext: data.x.filter((_, i) => i % 3 === 0),  // Show every 5th label
+                        showgrid: false,  // Remove y-axis gridlines
+                        zeroline: false,  // Remove zero line
+                        automargin: true,
+                        scaleanchor: "x", // This forces the y-axis to have the same scale as x-axis
+                        scaleratio: 1,     // This ensures a 1:1 aspect ratio, making the plot square
+                        fixedrange: true,  // Disable zooming on x-axis
+                        showspikes: true,
+                        spikemode: 'toaxis'
+                    },
+                    width: heatmapContainer.offsetWidth,
+                    height: heatmapContainer.offsetWidth,
+                    margin: { l: 50, r: 30, b: 50, t: 80, pad: 0 },  // Reduced margins
+                    autosize: true,
+                    plot_bgcolor: 'rgba(0,0,0,0)',  // Transparent background
+                    paper_bgcolor: 'rgba(0,0,0,0)'  // Transparent paper
                 };
+
+                // Create the config for responsiveness
+                const config = {
+                    responsive: true,
+                    displayModeBar: true,
+                    modeBarButtonsToRemove: ['lasso2d', 'select2d', 'pan'],
+                    displaylogo: false
+                };
+
+                // Plot the heatmap - use Plotly.react instead of newPlot to minimize redraws
+                Plotly.react('heatmap-container', [trace], layout, config);
+
+                // Show the results
+                resultsDiv.style.display = 'block';
             }
 
             function showError(message) {
                 errorDiv.textContent = message;
                 errorDiv.style.display = 'block';
             }
+
+            // Handle window resize to maintain aspect ratio
+            window.addEventListener('resize', function () {
+                // Only redraw if the plot exists and is displayed
+                if (resultsDiv.style.display !== 'none') {
+                    const containerWidth = heatmapContainer.offsetWidth;
+                    Plotly.relayout('heatmap-container', {
+                        width: containerWidth,
+                        height: containerWidth
+                    });
+                }
+            });
         });
     </script>
 </body>

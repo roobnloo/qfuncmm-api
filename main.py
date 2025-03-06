@@ -1,7 +1,4 @@
-from typing import Optional
-
-from fastapi import FastAPI, Depends, HTTPException, Query, Response, Request
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, Depends, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
@@ -14,9 +11,6 @@ import os
 from dotenv import load_dotenv
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-import io
 
 app = FastAPI()
 
@@ -54,7 +48,7 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 # Add an endpoint to serve the HTML page
 @app.get("/visualize/", response_class=HTMLResponse)
 async def visualize_page(request: Request):
-    return templates.TemplateResponse("visualize.html", {"request": request})
+    return templates.TemplateResponse("plot_interactive.html", {"request": request})
 
 
 # Dependency to get the database session
@@ -106,9 +100,8 @@ def read_root():
     }
 
 
-# Add this new endpoint
-@app.get("/correlation-heatmap/")
-def get_correlation_heatmap(
+@app.get("/correlation-heatmap-data/")
+def get_correlation_heatmap_data(
     subjectid: int = Query(..., description="Subject ID"),
     db: Session = Depends(get_db),
 ):
@@ -171,37 +164,38 @@ def get_correlation_heatmap(
                 ):
                     corr_matrix.iloc[j, i] = corr_matrix.iloc[i, j]
 
-        # Create a figure and axis
-        plt.figure(figsize=(10, 8))
+        # Apply a mask to keep only the lower triangular part
+        z_data = []
+        region_indices = {region: idx for idx, region in enumerate(all_regions)}
 
-        sns.heatmap(
-            corr_matrix,
-            mask=np.triu(np.ones_like(corr_matrix)),
-            annot=False,
-            cmap="RdBu",
-            vmin=-1,  # Minimum value for color mapping
-            vmax=1,  # Maximum value for color mapping
-            square=True,  # Make cells square
-            linewidths=0.5,  # Width of lines between cells
-            cbar=True,
-            cbar_kws={"shrink": 0.5},
-        )
+        # Create a matrix of the correct size (number of actual regions)
+        for i in range(len(all_regions)):
+            row = []
+            for j in range(len(all_regions)):
+                # Only include the lower triangle and diagonal
+                if i >= j:
+                    val = corr_matrix.iloc[i, j]
+                    row.append(None if pd.isna(val) else val)
+                else:
+                    row.append(None)
+            z_data.append(row)
 
-        # Set title and labels
-        plt.title(f"Region Correlation Matrix - Subject {subjectid}")
-        plt.tight_layout()
+        # Convert region IDs to strings for the axis labels
+        region_labels = ["r" + str(region) for region in all_regions]
 
-        # Save the figure to a bytes buffer
-        buf = io.BytesIO()
-        plt.savefig(buf, format="png", dpi=100)
-        buf.seek(0)
-        plt.close()
-
-        # Return the image as a streaming response
-        return StreamingResponse(buf, media_type="image/png")
+        return {
+            "z": z_data,
+            "x": region_labels,
+            "y": region_labels,
+            "indices": all_regions,  # The actual region indices
+            "subjectid": subjectid,
+        }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+
+        error_detail = str(e) + "\n" + traceback.format_exc()
+        raise HTTPException(status_code=500, detail=error_detail)
 
 
 @app.get("/completion-status/")
