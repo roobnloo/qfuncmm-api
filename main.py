@@ -149,9 +149,6 @@ def get_correlation_heatmap_data(
         # Sort indices to make sure they're in the same order
         corr_matrix = corr_matrix.reindex(index=all_regions, columns=all_regions)
 
-        # Fill diagonal with 1.0 (correlation of a region with itself is 1)
-        np.fill_diagonal(corr_matrix.values, 1.0)
-
         # Make the matrix symmetric
         for i in range(len(all_regions)):
             for j in range(i + 1, len(all_regions)):
@@ -164,20 +161,17 @@ def get_correlation_heatmap_data(
                 ):
                     corr_matrix.iloc[j, i] = corr_matrix.iloc[i, j]
 
-        # Apply a mask to keep only the lower triangular part
         z_data = []
-        region_indices = {region: idx for idx, region in enumerate(all_regions)}
 
         # Create a matrix of the correct size (number of actual regions)
         for i in range(len(all_regions)):
             row = []
             for j in range(len(all_regions)):
-                # Only include the lower triangle and diagonal
-                if i >= j:
-                    val = corr_matrix.iloc[i, j]
-                    row.append(None if pd.isna(val) else val)
+                if i == j:
+                    val = 1.0
                 else:
-                    row.append(None)
+                    val = corr_matrix.iloc[i, j]
+                row.append(None if pd.isna(val) else val)
             z_data.append(row)
 
         # Convert region IDs to strings for the axis labels
