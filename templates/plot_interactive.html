@@ -297,10 +297,23 @@
             function createPlot(data) {
                 errorDiv.style.display = 'none';
 
+                const customdata = [];
+                for (let i = 0; i < data.indices.length; i++) {
+                    const row = [];
+                    for (let j = 0; j < data.indices.length; j++) {
+                        row.push([
+                            data.region_names[data.indices[i]] || `Region ${data.indices[i]}`,
+                            data.region_names[data.indices[j]] || `Region ${data.indices[j]}`
+                        ]);
+                    }
+                    customdata.push(row);
+                }
+
                 const trace = {
                     z: data.z,
                     x: data.x,
                     y: data.y,
+                    customdata: customdata,
                     type: 'heatmap',
                     colorscale: [
                         [0, 'rgb(178,24,43)'],      // Dark red for -1
@@ -322,7 +335,7 @@
                         lenmode: 'fraction',
                         outlinewidth: 0
                     },
-                    hovertemplate: 'Region %{x} & Region %{y}<br>Correlation: %{z:.3f}<extra></extra>'
+                    hovertemplate: '%{x} - %{customdata[0]}<br>%{y} - %{customdata[1]}<br>Correlation: %{z:.3f}<extra></extra>'
                 };
 
                 const layout = {

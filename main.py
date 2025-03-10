@@ -107,7 +107,7 @@ def get_correlation_heatmap_data(
 ):
     try:
         # Query to fetch correlations for a specific subjectid
-        query = text(
+        correlation_query = text(
             """
             WITH latest_records AS (
                 SELECT 
@@ -123,20 +123,41 @@ def get_correlation_heatmap_data(
             WHERE rn = 1
             """
         )
-        result = db.execute(query, {"subjectid": subjectid}).fetchall()
-        if not result:
+        correlation_result = db.execute(
+            correlation_query, {"subjectid": subjectid}
+        ).fetchall()
+        if not correlation_result:
             raise HTTPException(
                 status_code=404,
                 detail=f"No results found for subjectid: {subjectid}",
             )
 
         # Convert to pandas DataFrame
-        df = pd.DataFrame(result, columns=["reg1id", "reg2id", "rho"])
+        df = pd.DataFrame(correlation_result, columns=["reg1id", "reg2id", "rho"])
 
-        # Get all unique region IDs
+        # Get all unique region IDs from the correlation data
         all_regions = sorted(list(set(df["reg1id"].tolist() + df["reg2id"].tolist())))
 
-        # Create a pivot table to form the correlation matrix
+        # Fetch region names for all regions in a single query
+        region_query = text(
+            """
+            SELECT regid, name
+            FROM region
+            WHERE regid IN :region_ids
+            """
+        )
+        region_result = db.execute(
+            region_query, {"region_ids": tuple(all_regions)}
+        ).fetchall()
+
+        # Create a dictionary mapping region IDs to region names
+        region_names = {row[0]: row[1] for row in region_result}
+
+        # Add default names for any regions that weren't found in the region table
+        for region_id in all_regions:
+            if region_id not in region_names:
+                region_names[region_id] = f"Region {region_id}"
+
         corr_matrix = df.pivot(index="reg1id", columns="reg2id", values="rho")
 
         # Ensure the matrix has all regions as both rows and columns
@@ -182,6 +203,7 @@ def get_correlation_heatmap_data(
             "x": region_labels,
             "y": region_labels,
             "indices": all_regions,  # The actual region indices
+            "region_names": region_names,  # Add region names mapping
             "subjectid": subjectid,
         }
 
