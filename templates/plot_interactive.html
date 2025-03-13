@@ -96,6 +96,52 @@
             color: white;
         }
 
+        /* Add styles for exam selection */
+        .exam-ids {
+            background-color: #f0f4f8;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            display: none;
+            /* Initially hidden */
+        }
+
+        .exam-ids h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+
+        .exam-ids .id-list {
+            max-height: 150px;
+            overflow-y: auto;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .exam-ids .id-badge {
+            display: inline-block;
+            background-color: #e3f2fd;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            border: 1px solid #bbdefb;
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+
+        .exam-ids .id-badge:hover {
+            background-color: #bbdefb;
+            transform: translateY(-2px);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .exam-ids .id-badge.active {
+            background-color: #2196f3;
+            color: white;
+        }
+
         .error {
             color: #d32f2f;
             margin-top: 10px;
@@ -129,6 +175,14 @@
             </div>
         </div>
 
+        <!-- Add exam selection container -->
+        <div id="examContainer" class="exam-ids">
+            <h3>Select an Exam ID:</h3>
+            <div id="examList" class="id-list">
+                <span class="loading">Select a subject first</span>
+            </div>
+        </div>
+
         <div id="error" class="error" style="display: none;"></div>
 
         <div id="results" style="display: none;">
@@ -148,9 +202,14 @@
             const resultsDiv = document.getElementById('results');
             const errorDiv = document.getElementById('error');
             const idListDiv = document.getElementById('idList');
+            const examContainer = document.getElementById('examContainer');
+            const examListDiv = document.getElementById('examList');
             const heatmapContainer = document.getElementById('heatmap-container');
 
-            let activeBadge = null;
+            let activeSubjectBadge = null;
+            let activeExamBadge = null;
+            let selectedSubjectId = null;
+            let selectedExamId = null;
 
             // Create cache objects
             const dataCache = {};
@@ -179,15 +238,26 @@
                                 badge.textContent = id;
                                 badge.addEventListener('click', () => {
                                     // Remove active class from previous badge
-                                    if (activeBadge) {
-                                        activeBadge.classList.remove('active');
+                                    if (activeSubjectBadge) {
+                                        activeSubjectBadge.classList.remove('active');
                                     }
                                     // Add active class to clicked badge
                                     badge.classList.add('active');
-                                    activeBadge = badge;
+                                    activeSubjectBadge = badge;
+                                    selectedSubjectId = id;
 
-                                    // Fetch matrix for selected subject ID
-                                    fetchMatrix(id);
+                                    // Reset exam selection
+                                    if (activeExamBadge) {
+                                        activeExamBadge.classList.remove('active');
+                                        activeExamBadge = null;
+                                    }
+                                    selectedExamId = null;
+
+                                    // Hide results when subject changes
+                                    resultsDiv.style.display = 'none';
+
+                                    // Fetch exams for selected subject
+                                    fetchExamsForSubject(id);
                                 });
                                 idListDiv.appendChild(badge);
                             });
@@ -201,27 +271,74 @@
                     });
             }
 
-            function fetchMatrix(subjectId) {
+            function fetchExamsForSubject(subjectId) {
+                // Show loading state
+                examListDiv.innerHTML = '<span class="loading">Loading exam IDs...</span>';
+                examContainer.style.display = 'block';
+
+                fetch(`/exams/${subjectId}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Failed to fetch exam IDs');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        examListDiv.innerHTML = '';
+                        if (data.examids && data.examids.length > 0) {
+                            data.examids.forEach(id => {
+                                const badge = document.createElement('span');
+                                badge.className = 'id-badge';
+                                badge.textContent = id;
+                                badge.addEventListener('click', () => {
+                                    // Remove active class from previous badge
+                                    if (activeExamBadge) {
+                                        activeExamBadge.classList.remove('active');
+                                    }
+                                    // Add active class to clicked badge
+                                    badge.classList.add('active');
+                                    activeExamBadge = badge;
+                                    selectedExamId = id;
+
+                                    // Fetch matrix for selected subject and exam
+                                    fetchMatrix(selectedSubjectId, selectedExamId);
+                                });
+                                examListDiv.appendChild(badge);
+                            });
+                        } else {
+                            examListDiv.textContent = 'No exam IDs available for this subject';
+                        }
+                    })
+                    .catch(error => {
+                        examListDiv.textContent = 'Error loading exam IDs';
+                        console.error('Error fetching exam IDs:', error);
+                    });
+            }
+
+            function fetchMatrix(subjectId, examId) {
                 // Clear previous results and errors
                 resultsDiv.style.display = 'none';
                 errorDiv.style.display = 'none';
                 showError('Loading correlation matrix...');
 
+                // Construct cache key from both subject and exam IDs
+                const cacheKey = `${subjectId}_${examId}`;
+
                 // Check if we have cached status data
                 const now = new Date().getTime();
-                if (dataCache[subjectId] && (now - dataCache[subjectId].timestamp) < CACHE_EXPIRATION) {
+                if (dataCache[cacheKey] && (now - dataCache[cacheKey].timestamp) < CACHE_EXPIRATION) {
                     // Use cached status data
-                    updateStatusBar(dataCache[subjectId].data);
+                    updateStatusBar(dataCache[cacheKey].data);
 
                     // Check if we have cached plot data
-                    if (plotDataCache[subjectId] && (now - plotDataCache[subjectId].timestamp) < CACHE_EXPIRATION) {
+                    if (plotDataCache[cacheKey] && (now - plotDataCache[cacheKey].timestamp) < CACHE_EXPIRATION) {
                         // Use cached plot data
-                        createPlot(plotDataCache[subjectId].data);
+                        createPlot(plotDataCache[cacheKey].data);
                         return;
                     }
                 } else {
                     // Fetch status data from server
-                    fetch(`/completion-status/?subjectid=${subjectId}`)
+                    fetch(`/completion-status/?subjectid=${subjectId}&examid=${examId}`)
                         .then(response => {
                             if (!response.ok) {
                                 throw new Error('Failed to fetch completion status');
@@ -230,7 +347,7 @@
                         })
                         .then(data => {
                             // Cache the status data with timestamp
-                            dataCache[subjectId] = {
+                            dataCache[cacheKey] = {
                                 data: data,
                                 timestamp: now
                             };
@@ -243,7 +360,7 @@
                 }
 
                 // Fetch the correlation data
-                fetch(`/correlation-heatmap-data/?subjectid=${subjectId}`)
+                fetch(`/correlation-heatmap-data/?subjectid=${subjectId}&examid=${examId}`)
                     .then(response => {
                         if (!response.ok) {
                             throw new Error(`HTTP error! Status: ${response.status}`);
@@ -252,7 +369,7 @@
                     })
                     .then(data => {
                         // Cache the plot data with timestamp
-                        plotDataCache[subjectId] = {
+                        plotDataCache[cacheKey] = {
                             data: data,
                             timestamp: now
                         };
@@ -261,7 +378,7 @@
                         createPlot(data);
                     })
                     .catch(error => {
-                        showError(`Error loading matrix for Subject ${subjectId}: ${error.message}`);
+                        showError(`Error loading matrix for Subject ${subjectId}, Exam ${examId}: ${error.message}`);
                         console.error('Error loading matrix:', error);
                     });
             }
@@ -339,13 +456,13 @@
                 };
 
                 const layout = {
-                    title: `Region Correlation Matrix - Subject ${data.subjectid}`,
+                    title: `Region Correlation Matrix - Subject ${data.subjectid}, Exam ${data.examid}`,
                     xaxis: {
                         title: 'Region ID',
                         side: 'bottom',
                         tickmode: 'array',
-                        tickvals: data.x.filter((_, i) => i % 3 === 0),  // Show every 5th tick
-                        ticktext: data.x.filter((_, i) => i % 3 === 0),  // Show every 5th label
+                        tickvals: data.x.filter((_, i) => i % 3 === 0),  // Show every 3rd tick
+                        ticktext: data.x.filter((_, i) => i % 3 === 0),  // Show every 3rd label
                         showgrid: false,  // Remove x-axis gridlines
                         zeroline: false,   // Remove zero line
                         automargin: true,
@@ -356,8 +473,8 @@
                     yaxis: {
                         title: 'Region ID',
                         tickmode: 'array',
-                        tickvals: data.x.filter((_, i) => i % 3 === 0),  // Show every 5th tick
-                        ticktext: data.x.filter((_, i) => i % 3 === 0),  // Show every 5th label
+                        tickvals: data.x.filter((_, i) => i % 3 === 0),  // Show every 3rd tick
+                        ticktext: data.x.filter((_, i) => i % 3 === 0),  // Show every 3rd label
                         showgrid: false,  // Remove y-axis gridlines
                         zeroline: false,  // Remove zero line
                         automargin: true,

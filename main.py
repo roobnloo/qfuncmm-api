@@ -103,10 +103,11 @@ def read_root():
 @app.get("/correlation-heatmap-data/")
 def get_correlation_heatmap_data(
     subjectid: int = Query(..., description="Subject ID"),
+    examid: int = Query(..., description="Exam ID"),
     db: Session = Depends(get_db),
 ):
     try:
-        # Query to fetch correlations for a specific subjectid
+        # Query to fetch correlations for a specific subjectid and examid
         correlation_query = text(
             """
             WITH latest_records AS (
@@ -116,7 +117,7 @@ def get_correlation_heatmap_data(
                     rho,
                     ROW_NUMBER() OVER (PARTITION BY reg1id, reg2id ORDER BY "end" DESC) as rn
                 FROM stage2_run
-                WHERE subjectid = :subjectid
+                WHERE subjectid = :subjectid AND examid = :examid
             )
             SELECT reg1id, reg2id, rho
             FROM latest_records
@@ -124,12 +125,12 @@ def get_correlation_heatmap_data(
             """
         )
         correlation_result = db.execute(
-            correlation_query, {"subjectid": subjectid}
+            correlation_query, {"subjectid": subjectid, "examid": examid}
         ).fetchall()
         if not correlation_result:
             raise HTTPException(
                 status_code=404,
-                detail=f"No results found for subjectid: {subjectid}",
+                detail=f"No results found for subjectid: {subjectid}, examid: {examid}",
             )
 
         # Convert to pandas DataFrame
@@ -205,6 +206,7 @@ def get_correlation_heatmap_data(
             "indices": all_regions,  # The actual region indices
             "region_names": region_names,  # Add region names mapping
             "subjectid": subjectid,
+            "examid": examid,
         }
 
     except Exception as e:
@@ -217,10 +219,11 @@ def get_correlation_heatmap_data(
 @app.get("/completion-status/")
 def get_completion_status(
     subjectid: int = Query(..., description="Subject ID"),
+    examid: int = Query(..., description="Exam ID"),
     db: Session = Depends(get_db),
 ):
     try:
-        # Query to count unique region pairs and get the latest timestamp
+        # Update both queries to include examid filter
         query = text(
             """
             WITH latest_records AS (
@@ -229,7 +232,7 @@ def get_completion_status(
                     reg2id,
                     ROW_NUMBER() OVER (PARTITION BY reg1id, reg2id ORDER BY "end" DESC) as rn
                 FROM stage2_run
-                WHERE subjectid = :subjectid
+                WHERE subjectid = :subjectid AND examid = :examid
             )
             SELECT COUNT(*) as pair_count
             FROM latest_records
@@ -237,20 +240,21 @@ def get_completion_status(
             """
         )
 
-        # Query to get the most recent timestamp for this subject
         timestamp_query = text(
             """
             SELECT "end"
             FROM stage2_run
-            WHERE subjectid = :subjectid
+            WHERE subjectid = :subjectid AND examid = :examid
             ORDER BY "end" DESC
             LIMIT 1
             """
         )
 
-        pair_count_result = db.execute(query, {"subjectid": subjectid}).fetchone()
+        pair_count_result = db.execute(
+            query, {"subjectid": subjectid, "examid": examid}
+        ).fetchone()
         timestamp_result = db.execute(
-            timestamp_query, {"subjectid": subjectid}
+            timestamp_query, {"subjectid": subjectid, "examid": examid}
         ).fetchone()
 
         if not pair_count_result:
@@ -272,6 +276,27 @@ def get_completion_status(
             "completion_percentage": round(completion_percentage, 2),
             "last_updated": last_updated,
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/exams/{subjectid}")
+def get_exams(subjectid: int, db: Session = Depends(get_db)):
+    try:
+        query = text(
+            """
+            SELECT DISTINCT examid 
+            FROM stage2_run
+            WHERE subjectid = :subjectid
+            ORDER BY examid
+        """
+        )
+
+        result = db.execute(query, {"subjectid": subjectid}).fetchall()
+        examids = [row[0] for row in result]
+
+        return {"examids": examids}
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
