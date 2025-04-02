@@ -122,15 +122,17 @@
             transition: flex-basis 0.3s ease;
         }
 
-        .matrix-column h3 {
+        .matrix-column h4 {
             text-align: center;
-            color: #333;
-            margin-top: 0;
+            margin: 15px 0 5px 0;
+            color: #555;
         }
 
         .heatmap-container {
             width: 100%;
-            height: 600px;
+            height: 450px;
+            /* Make each matrix slightly smaller */
+            margin-bottom: 20px;
         }
     </style>
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
@@ -149,7 +151,6 @@
 
         <div id="error" class="error" style="display: none;"></div>
 
-        <!-- Side-by-side results -->
         <div id="results" class="results-container" style="display: none;">
             <div class="matrix-column">
                 <h3>Exam 0</h3>
@@ -159,7 +160,10 @@
                     </div>
                     <div id="statusText0" class="status-text"></div>
                 </div>
+                <h4>Rho Values</h4>
                 <div id="heatmap-container0" class="heatmap-container"></div>
+                <h4>Rho CA Values</h4>
+                <div id="heatmap-container0-ca" class="heatmap-container"></div>
             </div>
             <div class="matrix-column">
                 <h3>Exam 1</h3>
@@ -169,7 +173,10 @@
                     </div>
                     <div id="statusText1" class="status-text"></div>
                 </div>
+                <h4>Rho Values</h4>
                 <div id="heatmap-container1" class="heatmap-container"></div>
+                <h4>Rho CA Values</h4>
+                <div id="heatmap-container1-ca" class="heatmap-container"></div>
             </div>
         </div>
     </div>
@@ -291,7 +298,7 @@
                     .then(response => {
                         if (!response.ok) {
                             // Add special handling for 404 errors on exam 1
-                            if (response.status === 404) {
+                            if (examId === 1) {
                                 // Hide the right column if exam 1 doesn't exist
                                 document.querySelector('.matrix-column:nth-child(2)').style.display = 'none';
                                 // Make the left column take full width
@@ -358,6 +365,16 @@
             }
 
             function createPlot(data, examId) {
+                // Create the rho plot
+                createSinglePlot(data, examId, 'rho', '');
+
+                // Create the rho_ca plot if the data exists
+                if (data.z_ca) {
+                    createSinglePlot(data, examId, 'rho_ca', '-ca');
+                }
+            }
+
+            function createSinglePlot(data, examId, type, suffix) {
                 const customdata = [];
                 for (let i = 0; i < data.indices.length; i++) {
                     const row = [];
@@ -370,8 +387,11 @@
                     customdata.push(row);
                 }
 
+                // Use the appropriate z data based on type
+                const zData = type === 'rho' ? data.z : data.z_ca;
+
                 const trace = {
-                    z: data.z,
+                    z: zData,
                     x: data.x,
                     y: data.y,
                     customdata: customdata,
@@ -389,29 +409,28 @@
                     zmax: 1,
                     showscale: true,
                     colorbar: {
-                        title: 'Correlation',
+                        title: type === 'rho' ? 'Correlation' : 'Correlation CA',
                         thickness: 15,
                         thicknessmode: 'pixels',
                         len: 0.5,
                         lenmode: 'fraction',
                         outlinewidth: 0
                     },
-                    hovertemplate: '%{x} - %{customdata[1]}<br>%{y} - %{customdata[0]}<br>Correlation: %{z:.3f}<extra></extra>'
+                    hovertemplate: '%{x} - %{customdata[1]}<br>%{y} - %{customdata[0]}<br>Value: %{z:.3f}<extra></extra>'
                 };
 
-                const heatmapContainerId = `heatmap-container${examId}`;
-                const containerWidth = document.getElementById(heatmapContainerId).offsetWidth;
+                const heatmapContainerId = `heatmap-container${examId}${suffix}`;
 
                 const layout = {
-                    title: `Region Correlation Matrix - Subject ${data.subjectid}, Exam ${data.examid}`,
+                    title: `${type === 'rho' ? 'Correlation Matrix' : 'Correlation CA Matrix'} - Subject ${data.subjectid}, Exam ${data.examid}`,
                     xaxis: {
                         title: 'Region ID',
                         side: 'bottom',
                         tickmode: 'array',
                         tickvals: data.x.filter((_, i) => i % 3 === 0),  // Show every 3rd tick
                         ticktext: data.x.filter((_, i) => i % 3 === 0),  // Show every 3rd label
-                        showgrid: false,  // Remove x-axis gridlines
-                        zeroline: false,   // Remove zero line
+                        showgrid: false,
+                        zeroline: false,
                         automargin: true,
                         fixedrange: true,
                         showspikes: true,
@@ -420,34 +439,33 @@
                     yaxis: {
                         title: 'Region ID',
                         tickmode: 'array',
-                        tickvals: data.x.filter((_, i) => i % 3 === 0),  // Show every 3rd tick
-                        ticktext: data.x.filter((_, i) => i % 3 === 0),  // Show every 3rd label
-                        showgrid: false,  // Remove y-axis gridlines
-                        zeroline: false,  // Remove zero line
+                        tickvals: data.x.filter((_, i) => i % 3 === 0),
+                        ticktext: data.x.filter((_, i) => i % 3 === 0),
+                        showgrid: false,
+                        zeroline: false,
                         automargin: true,
-                        scaleanchor: "x", // This forces the y-axis to have the same scale as x-axis
-                        scaleratio: 1,     // This ensures a 1:1 aspect ratio, making the plot square
-                        fixedrange: true,  // Disable zooming on x-axis
+                        scaleanchor: "x",
+                        scaleratio: 1,
+                        fixedrange: true,
                         showspikes: true,
                         spikemode: 'toaxis'
                     },
-                    width: 600,
-                    height: 600,
-                    margin: { l: 50, r: 30, b: 50, t: 80, pad: 0 },  // Reduced margins
-                    autosize: true,
-                    plot_bgcolor: 'rgba(0,0,0,0)',  // Transparent background
-                    paper_bgcolor: 'rgba(0,0,0,0)'  // Transparent paper
+                    width: 600,   // Fixed width
+                    height: 450,  // Fixed height (slightly smaller)
+                    margin: { l: 50, r: 30, b: 50, t: 80, pad: 0 },
+                    autosize: false,
+                    plot_bgcolor: 'rgba(0,0,0,0)',
+                    paper_bgcolor: 'rgba(0,0,0,0)'
                 };
 
-                // Create the config for responsiveness
                 const config = {
-                    responsive: true,
+                    responsive: false,
                     displayModeBar: true,
                     modeBarButtonsToRemove: ['lasso2d', 'select2d', 'pan'],
                     displaylogo: false
                 };
 
-                // Plot the heatmap - use Plotly.react instead of newPlot to minimize redraws
+                // Plot the heatmap
                 Plotly.react(heatmapContainerId, [trace], layout, config);
             }
 

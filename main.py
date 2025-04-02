@@ -115,11 +115,12 @@ def get_correlation_heatmap_data(
                     reg1id, 
                     reg2id, 
                     rho,
+                    rho_ca,
                     ROW_NUMBER() OVER (PARTITION BY reg1id, reg2id ORDER BY "end" DESC) as rn
                 FROM stage2_run
                 WHERE subjectid = :subjectid AND examid = :examid
             )
-            SELECT reg1id, reg2id, rho
+            SELECT reg1id, reg2id, rho, rho_ca
             FROM latest_records
             WHERE rn = 1
             """
@@ -134,7 +135,9 @@ def get_correlation_heatmap_data(
             )
 
         # Convert to pandas DataFrame
-        df = pd.DataFrame(correlation_result, columns=["reg1id", "reg2id", "rho"])
+        df = pd.DataFrame(
+            correlation_result, columns=["reg1id", "reg2id", "rho", "rho_ca"]
+        )
 
         # Get all unique region IDs from the correlation data
         all_regions = sorted(list(set(df["reg1id"].tolist() + df["reg2id"].tolist())))
@@ -160,6 +163,7 @@ def get_correlation_heatmap_data(
                 region_names[region_id] = f"Region {region_id}"
 
         corr_matrix = df.pivot(index="reg1id", columns="reg2id", values="rho")
+        corr_matrix_ca = df.pivot(index="reg1id", columns="reg2id", values="rho_ca")
 
         # Ensure the matrix has all regions as both rows and columns
         for reg in all_regions:
@@ -170,10 +174,12 @@ def get_correlation_heatmap_data(
 
         # Sort indices to make sure they're in the same order
         corr_matrix = corr_matrix.reindex(index=all_regions, columns=all_regions)
+        corr_matrix_ca = corr_matrix_ca.reindex(index=all_regions, columns=all_regions)
 
         # Make the matrix symmetric
         for i in range(len(all_regions)):
             for j in range(i + 1, len(all_regions)):
+                # Handle symmetry for corr_matrix
                 if pd.isna(corr_matrix.iloc[i, j]) and not pd.isna(
                     corr_matrix.iloc[j, i]
                 ):
@@ -183,24 +189,41 @@ def get_correlation_heatmap_data(
                 ):
                     corr_matrix.iloc[j, i] = corr_matrix.iloc[i, j]
 
-        z_data = []
+                # Handle symmetry for corr_matrix_ca
+                if pd.isna(corr_matrix_ca.iloc[i, j]) and not pd.isna(
+                    corr_matrix_ca.iloc[j, i]
+                ):
+                    corr_matrix_ca.iloc[i, j] = corr_matrix_ca.iloc[j, i]
+                elif pd.isna(corr_matrix_ca.iloc[j, i]) and not pd.isna(
+                    corr_matrix_ca.iloc[i, j]
+                ):
+                    corr_matrix_ca.iloc[j, i] = corr_matrix_ca.iloc[i, j]
 
-        # Create a matrix of the correct size (number of actual regions)
+        z_data = []
+        z_data_ca = []
+
+        # Create matrices of the correct size (number of actual regions)
         for i in range(len(all_regions)):
             row = []
+            row_ca = []
             for j in range(len(all_regions)):
                 if i == j:
                     val = 1.0
+                    val_ca = 1.0
                 else:
                     val = corr_matrix.iloc[i, j]
+                    val_ca = corr_matrix_ca.iloc[i, j]
                 row.append(None if pd.isna(val) else val)
+                row_ca.append(None if pd.isna(val_ca) else val_ca)
             z_data.append(row)
+            z_data_ca.append(row_ca)
 
         # Convert region IDs to strings for the axis labels
         region_labels = ["r" + str(region) for region in all_regions]
 
         return {
             "z": z_data,
+            "z_ca": z_data_ca,
             "x": region_labels,
             "y": region_labels,
             "indices": all_regions,  # The actual region indices
