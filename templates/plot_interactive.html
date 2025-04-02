@@ -18,7 +18,7 @@
         }
 
         .status-bar-container {
-            width: 700px;
+            width: 100%;
             background-color: #e0e0e0;
             border-radius: 4px;
             height: 20px;
@@ -40,7 +40,7 @@
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 1600px;
             margin: 0 auto;
             background-color: white;
             padding: 20px;
@@ -96,52 +96,6 @@
             color: white;
         }
 
-        /* Add styles for exam selection */
-        .exam-ids {
-            background-color: #f0f4f8;
-            padding: 15px;
-            border-radius: 4px;
-            margin-bottom: 20px;
-            border: 1px solid #ddd;
-            display: none;
-            /* Initially hidden */
-        }
-
-        .exam-ids h3 {
-            margin-top: 0;
-            margin-bottom: 10px;
-        }
-
-        .exam-ids .id-list {
-            max-height: 150px;
-            overflow-y: auto;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-
-        .exam-ids .id-badge {
-            display: inline-block;
-            background-color: #e3f2fd;
-            padding: 8px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            border: 1px solid #bbdefb;
-            font-size: 14px;
-            transition: all 0.2s ease;
-        }
-
-        .exam-ids .id-badge:hover {
-            background-color: #bbdefb;
-            transform: translateY(-2px);
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-
-        .exam-ids .id-badge.active {
-            background-color: #2196f3;
-            color: white;
-        }
-
         .error {
             color: #d32f2f;
             margin-top: 10px;
@@ -156,9 +110,27 @@
             color: #666;
         }
 
-        #heatmap-container {
-            width: 700px;
-            height: 700px;
+        /* Side-by-side results */
+        .results-container {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .matrix-column {
+            flex: 1;
+            transition: flex-basis 0.3s ease;
+        }
+
+        .matrix-column h3 {
+            text-align: center;
+            color: #333;
+            margin-top: 0;
+        }
+
+        .heatmap-container {
+            width: 100%;
+            height: 600px;
         }
     </style>
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
@@ -175,25 +147,30 @@
             </div>
         </div>
 
-        <!-- Add exam selection container -->
-        <div id="examContainer" class="exam-ids">
-            <h3>Select an Exam ID:</h3>
-            <div id="examList" class="id-list">
-                <span class="loading">Select a subject first</span>
-            </div>
-        </div>
-
         <div id="error" class="error" style="display: none;"></div>
 
-        <div id="results" style="display: none;">
-            <div class="status-container">
-                <div class="status-bar-container">
-                    <div id="statusBar" class="status-bar"></div>
+        <!-- Side-by-side results -->
+        <div id="results" class="results-container" style="display: none;">
+            <div class="matrix-column">
+                <h3>Exam 0</h3>
+                <div class="status-container">
+                    <div class="status-bar-container">
+                        <div id="statusBar0" class="status-bar"></div>
+                    </div>
+                    <div id="statusText0" class="status-text"></div>
                 </div>
-                <div id="statusText" class="status-text"></div>
+                <div id="heatmap-container0" class="heatmap-container"></div>
             </div>
-
-            <div id="heatmap-container"></div>
+            <div class="matrix-column">
+                <h3>Exam 1</h3>
+                <div class="status-container">
+                    <div class="status-bar-container">
+                        <div id="statusBar1" class="status-bar"></div>
+                    </div>
+                    <div id="statusText1" class="status-text"></div>
+                </div>
+                <div id="heatmap-container1" class="heatmap-container"></div>
+            </div>
         </div>
     </div>
 
@@ -202,14 +179,11 @@
             const resultsDiv = document.getElementById('results');
             const errorDiv = document.getElementById('error');
             const idListDiv = document.getElementById('idList');
-            const examContainer = document.getElementById('examContainer');
-            const examListDiv = document.getElementById('examList');
-            const heatmapContainer = document.getElementById('heatmap-container');
+            const heatmapContainer0 = document.getElementById('heatmap-container0');
+            const heatmapContainer1 = document.getElementById('heatmap-container1');
 
             let activeSubjectBadge = null;
-            let activeExamBadge = null;
             let selectedSubjectId = null;
-            let selectedExamId = null;
 
             // Create cache objects
             const dataCache = {};
@@ -246,18 +220,12 @@
                                     activeSubjectBadge = badge;
                                     selectedSubjectId = id;
 
-                                    // Reset exam selection
-                                    if (activeExamBadge) {
-                                        activeExamBadge.classList.remove('active');
-                                        activeExamBadge = null;
-                                    }
-                                    selectedExamId = null;
-
                                     // Hide results when subject changes
                                     resultsDiv.style.display = 'none';
 
-                                    // Fetch exams for selected subject
-                                    fetchExamsForSubject(id);
+                                    // Fetch matrices for selected subject (exam 0 and 1)
+                                    fetchMatrix(selectedSubjectId, 0);
+                                    fetchMatrix(selectedSubjectId, 1);
                                 });
                                 idListDiv.appendChild(badge);
                             });
@@ -271,55 +239,12 @@
                     });
             }
 
-            function fetchExamsForSubject(subjectId) {
-                // Show loading state
-                examListDiv.innerHTML = '<span class="loading">Loading exam IDs...</span>';
-                examContainer.style.display = 'block';
-
-                fetch(`/exams/${subjectId}`)
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error('Failed to fetch exam IDs');
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        examListDiv.innerHTML = '';
-                        if (data.examids && data.examids.length > 0) {
-                            data.examids.forEach(id => {
-                                const badge = document.createElement('span');
-                                badge.className = 'id-badge';
-                                badge.textContent = id;
-                                badge.addEventListener('click', () => {
-                                    // Remove active class from previous badge
-                                    if (activeExamBadge) {
-                                        activeExamBadge.classList.remove('active');
-                                    }
-                                    // Add active class to clicked badge
-                                    badge.classList.add('active');
-                                    activeExamBadge = badge;
-                                    selectedExamId = id;
-
-                                    // Fetch matrix for selected subject and exam
-                                    fetchMatrix(selectedSubjectId, selectedExamId);
-                                });
-                                examListDiv.appendChild(badge);
-                            });
-                        } else {
-                            examListDiv.textContent = 'No exam IDs available for this subject';
-                        }
-                    })
-                    .catch(error => {
-                        examListDiv.textContent = 'Error loading exam IDs';
-                        console.error('Error fetching exam IDs:', error);
-                    });
-            }
-
             function fetchMatrix(subjectId, examId) {
-                // Clear previous results and errors
-                resultsDiv.style.display = 'none';
+                // Clear previous errors
                 errorDiv.style.display = 'none';
-                showError('Loading correlation matrix...');
+
+                // Show loading message
+                showError(`Loading correlation matrices for Subject ${subjectId}...`);
 
                 // Construct cache key from both subject and exam IDs
                 const cacheKey = `${subjectId}_${examId}`;
@@ -328,41 +253,52 @@
                 const now = new Date().getTime();
                 if (dataCache[cacheKey] && (now - dataCache[cacheKey].timestamp) < CACHE_EXPIRATION) {
                     // Use cached status data
-                    updateStatusBar(dataCache[cacheKey].data);
+                    updateStatusBar(dataCache[cacheKey].data, examId);
 
                     // Check if we have cached plot data
                     if (plotDataCache[cacheKey] && (now - plotDataCache[cacheKey].timestamp) < CACHE_EXPIRATION) {
                         // Use cached plot data
-                        createPlot(plotDataCache[cacheKey].data);
+                        createPlot(plotDataCache[cacheKey].data, examId);
+                        // Show results after both matrices are loaded
+                        resultsDiv.style.display = 'flex';
                         return;
                     }
-                } else {
-                    // Fetch status data from server
-                    fetch(`/completion-status/?subjectid=${subjectId}&examid=${examId}`)
-                        .then(response => {
-                            if (!response.ok) {
-                                throw new Error('Failed to fetch completion status');
-                            }
-                            return response.json();
-                        })
-                        .then(data => {
-                            // Cache the status data with timestamp
-                            dataCache[cacheKey] = {
-                                data: data,
-                                timestamp: now
-                            };
-                            updateStatusBar(data);
-                        })
-                        .catch(error => {
-                            console.error('Error fetching completion status:', error);
-                            document.getElementById('statusText').textContent = 'Could not load completion status';
-                        });
                 }
+
+                // Fetch status data from server
+                fetch(`/completion-status/?subjectid=${subjectId}&examid=${examId}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Failed to fetch completion status');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        // Cache the status data with timestamp
+                        dataCache[cacheKey] = {
+                            data: data,
+                            timestamp: now
+                        };
+                        updateStatusBar(data, examId);
+                    })
+                    .catch(error => {
+                        console.error(`Error fetching completion status for exam ${examId}:`, error);
+                        document.getElementById(`statusText${examId}`).textContent = 'Could not load completion status';
+                    });
 
                 // Fetch the correlation data
                 fetch(`/correlation-heatmap-data/?subjectid=${subjectId}&examid=${examId}`)
                     .then(response => {
                         if (!response.ok) {
+                            // Add special handling for 404 errors on exam 1
+                            if (response.status === 404) {
+                                // Hide the right column if exam 1 doesn't exist
+                                document.querySelector('.matrix-column:nth-child(2)').style.display = 'none';
+                                // Make the left column take full width
+                                document.querySelector('.matrix-column:nth-child(1)').style.flexBasis = '100%';
+                                // Don't show an error message for this case
+                                return Promise.reject(new Error('no_data'));
+                            }
                             throw new Error(`HTTP error! Status: ${response.status}`);
                         }
                         return response.json();
@@ -374,19 +310,29 @@
                             timestamp: now
                         };
 
+                        // Show the column for this exam
+                        document.querySelector(`.matrix-column:nth-child(${examId + 1})`).style.display = 'block';
+
                         // Create the plot
-                        createPlot(data);
+                        createPlot(data, examId);
+                        // Show results after loading
+                        resultsDiv.style.display = 'flex';
+                        // Hide the loading error message
+                        errorDiv.style.display = 'none';
                     })
                     .catch(error => {
+                        // Don't show error message if it's our special "no_data" case
+                        if (error.message === 'no_data') return;
+
                         showError(`Error loading matrix for Subject ${subjectId}, Exam ${examId}: ${error.message}`);
-                        console.error('Error loading matrix:', error);
+                        console.error(`Error loading matrix for exam ${examId}:`, error);
                     });
             }
 
-            function updateStatusBar(data) {
-                // Update the status bar
-                const statusBar = document.getElementById('statusBar');
-                const statusText = document.getElementById('statusText');
+            function updateStatusBar(data, examId) {
+                // Update the status bar for the specified exam
+                const statusBar = document.getElementById(`statusBar${examId}`);
+                const statusText = document.getElementById(`statusText${examId}`);
 
                 statusBar.style.width = `${data.completion_percentage}%`;
 
@@ -411,9 +357,7 @@
                 statusText.textContent = statusMessage;
             }
 
-            function createPlot(data) {
-                errorDiv.style.display = 'none';
-
+            function createPlot(data, examId) {
                 const customdata = [];
                 for (let i = 0; i < data.indices.length; i++) {
                     const row = [];
@@ -455,6 +399,9 @@
                     hovertemplate: '%{x} - %{customdata[1]}<br>%{y} - %{customdata[0]}<br>Correlation: %{z:.3f}<extra></extra>'
                 };
 
+                const heatmapContainerId = `heatmap-container${examId}`;
+                const containerWidth = document.getElementById(heatmapContainerId).offsetWidth;
+
                 const layout = {
                     title: `Region Correlation Matrix - Subject ${data.subjectid}, Exam ${data.examid}`,
                     xaxis: {
@@ -484,8 +431,8 @@
                         showspikes: true,
                         spikemode: 'toaxis'
                     },
-                    width: heatmapContainer.offsetWidth,
-                    height: heatmapContainer.offsetWidth,
+                    width: 600,
+                    height: 600,
                     margin: { l: 50, r: 30, b: 50, t: 80, pad: 0 },  // Reduced margins
                     autosize: true,
                     plot_bgcolor: 'rgba(0,0,0,0)',  // Transparent background
@@ -501,10 +448,7 @@
                 };
 
                 // Plot the heatmap - use Plotly.react instead of newPlot to minimize redraws
-                Plotly.react('heatmap-container', [trace], layout, config);
-
-                // Show the results
-                resultsDiv.style.display = 'block';
+                Plotly.react(heatmapContainerId, [trace], layout, config);
             }
 
             function showError(message) {
@@ -514,14 +458,21 @@
 
             // Handle window resize to maintain aspect ratio
             window.addEventListener('resize', function () {
-                // Only redraw if the plot exists and is displayed
-                if (resultsDiv.style.display !== 'none') {
-                    const containerWidth = heatmapContainer.offsetWidth;
-                    Plotly.relayout('heatmap-container', {
-                        width: containerWidth,
-                        height: containerWidth
-                    });
-                }
+                // // Only redraw if the plots exist and are displayed
+                // if (resultsDiv.style.display !== 'none') {
+                //     const containerWidth0 = heatmapContainer0.offsetWidth;
+                //     const containerWidth1 = heatmapContainer1.offsetWidth;
+
+                //     Plotly.relayout('heatmap-container0', {
+                //         width: containerWidth0,
+                //         height: containerWidth0
+                //     });
+
+                //     Plotly.relayout('heatmap-container1', {
+                //         width: containerWidth1,
+                //         height: containerWidth1
+                //     });
+                // }
             });
         });
     </script>
