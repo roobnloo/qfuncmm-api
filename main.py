@@ -45,10 +45,16 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 
-# Add an endpoint to serve the HTML page
+# Keep original visualization endpoint
 @app.get("/visualize/", response_class=HTMLResponse)
 async def visualize_page(request: Request):
     return templates.TemplateResponse("plot_interactive.html", {"request": request})
+
+
+# Add new status endpoint
+@app.get("/status/", response_class=HTMLResponse)
+async def status_page(request: Request):
+    return templates.TemplateResponse("status.html", {"request": request})
 
 
 # Dependency to get the database session

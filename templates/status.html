@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Correlation Matrix Status</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .completion-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .subject-status {
+            padding: 10px;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        .subject-status .progress {
+            height: 4px;
+            background-color: #e0e0e0;
+            border-radius: 2px;
+            margin: 5px 0;
+        }
+
+        .subject-status .progress-bar {
+            height: 100%;
+            background-color: #4caf50;
+            border-radius: 2px;
+            transition: width 0.3s ease;
+        }
+
+        .error {
+            color: #d32f2f;
+            padding: 10px;
+            background-color: #ffebee;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Correlation Matrix Status</h1>
+        <div id="completionGrid" class="completion-grid">
+            <span>Loading completion status...</span>
+        </div>
+    </div>
+
+    <script>
+        async function updateCompletionGrid() {
+            const grid = document.getElementById('completionGrid');
+            const now = new Date().getTime();
+            const completionCache = {};
+            const CACHE_EXPIRATION = 5 * 60 * 1000;
+
+            try {
+                const response = await fetch('/subjects/');
+                const data = await response.json();
+                const subjectids = data.subjectids;
+
+                grid.innerHTML = '';
+
+                for (const subjectId of subjectids) {
+                    const card = document.createElement('div');
+                    card.className = 'subject-status';
+                    card.innerHTML = `
+                        <div>Subject ${subjectId}</div>
+                        <div class="progress">
+                            <div class="progress-bar" style="width: 0%"></div>
+                        </div>
+                        <div class="status-details">Loading...</div>
+                    `;
+                    grid.appendChild(card);
+
+                    const examsResponse = await fetch(`/exams/${subjectId}`);
+                    const examsData = await examsResponse.json();
+                    const examids = examsData.examids;
+
+                    let totalCompletion = 0;
+                    let completionDetails = [];
+
+                    for (const examId of examids) {
+                        const cacheKey = `${subjectId}_${examId}`;
+                        let completionData;
+
+                        if (completionCache[cacheKey] && (now - completionCache[cacheKey].timestamp) < CACHE_EXPIRATION) {
+                            completionData = completionCache[cacheKey].data;
+                        } else {
+                            const statusResponse = await fetch(`/completion-status/?subjectid=${subjectId}&examid=${examId}`);
+                            completionData = await statusResponse.json();
+                            completionCache[cacheKey] = {
+                                data: completionData,
+                                timestamp: now
+                            };
+                        }
+
+                        totalCompletion += completionData.completion_percentage;
+                        completionDetails.push(`Exam ${examId}: ${completionData.completion_percentage}%`);
+                    }
+
+                    const avgCompletion = examids.length > 0 ? totalCompletion / examids.length : 0;
+                    card.querySelector('.progress-bar').style.width = `${avgCompletion}%`;
+                    card.querySelector('.status-details').textContent = completionDetails.join(' | ');
+                }
+
+            } catch (error) {
+                console.error('Error updating completion grid:', error);
+                grid.innerHTML = '<div class="error">Failed to load completion status</div>';
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', updateCompletionGrid);
+        // Update every 5 minutes
+        setInterval(updateCompletionGrid, 5 * 60 * 1000);
+    </script>
+</body>
+
+</html>
